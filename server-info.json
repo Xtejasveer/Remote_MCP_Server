@@ -1,0 +1,119 @@
+{
+  "server": {
+    "name": "Simple Calculator server",
+    "instructions": null,
+    "version": "3.4.4",
+    "website_url": null,
+    "icons": null,
+    "generation": 2,
+    "capabilities": {
+      "tools": {
+        "listChanged": true
+      },
+      "resources": {
+        "subscribe": false,
+        "listChanged": false
+      },
+      "prompts": {
+        "listChanged": false
+      },
+      "logging": {}
+    }
+  },
+  "environment": {
+    "fastmcp": "3.4.4",
+    "mcp": "1.28.1"
+  },
+  "tools": [
+    {
+      "key": "tool:add@",
+      "name": "add",
+      "description": "Add two numbers together.\nArgs:\n    a : First Number\n    b : Second Number\n\nReturns:\n    The sum of a and b",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "type": "integer"
+          },
+          "b": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ],
+        "type": "object"
+      },
+      "output_schema": {
+        "properties": {
+          "result": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object",
+        "x-fastmcp-wrap-result": true
+      },
+      "annotations": null,
+      "tags": null,
+      "title": null,
+      "icons": null,
+      "meta": null
+    },
+    {
+      "key": "tool:random_number@",
+      "name": "random_number",
+      "description": "Generate a random number within a range.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "min_val": {
+            "default": 1,
+            "type": "integer"
+          },
+          "max_val": {
+            "default": 100,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "properties": {
+          "result": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object",
+        "x-fastmcp-wrap-result": true
+      },
+      "annotations": null,
+      "tags": null,
+      "title": null,
+      "icons": null,
+      "meta": null
+    }
+  ],
+  "prompts": [],
+  "resources": [
+    {
+      "key": "resource:info://server@",
+      "uri": "info://server",
+      "name": "server_info",
+      "description": "Get information about this server.",
+      "mime_type": "text/plain",
+      "annotations": null,
+      "tags": null,
+      "title": null,
+      "icons": null,
+      "meta": null
+    }
+  ],
+  "templates": []
+}
