@@ -1,6 +1,6 @@
 from fastmcp import FastMCP
 import os
-import aiosqlite  # Changed: sqlite3 → aiosqlite
+import aiosqlite
 import tempfile
 import asyncio
 
@@ -13,11 +13,17 @@ print(f"Database path: {DB_PATH}")
 
 mcp = FastMCP("ExpenseTracker")
 
-async def init_db():  # Changed: added async
+# Changed: no longer initialized at import time — this caused the build
+# failure. FastMCP Cloud's build step calls `fastmcp inspect`, which imports
+# this module from inside a running event loop, and asyncio.run() cannot be
+# called while a loop is already running.
+_db_initialized = False
+_db_init_lock = asyncio.Lock()
+
+async def init_db():
     try:
-        # Changed: sqlite3.connect → aiosqlite.connect
-        async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
-            await c.execute("PRAGMA journal_mode=WAL")  # Changed: added await
+        async with aiosqlite.connect(DB_PATH) as c:
+            await c.execute("PRAGMA journal_mode=WAL")
             await c.execute("""
                 CREATE TABLE IF NOT EXISTS expenses(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,42 +33,53 @@ async def init_db():  # Changed: added async
                     subcategory TEXT DEFAULT '',
                     note TEXT DEFAULT ''
                 )
-            """)  # Changed: added await
+            """)
             # Test write access
-            await c.execute("INSERT OR IGNORE INTO expenses(date, amount, category) VALUES ('2000-01-01', 0, 'test')")  # Changed: added await
-            await c.execute("DELETE FROM expenses WHERE category = 'test'")  # Changed: added await
-            await c.commit()  # Changed: added await
+            await c.execute("INSERT OR IGNORE INTO expenses(date, amount, category) VALUES ('2000-01-01', 0, 'test')")
+            await c.execute("DELETE FROM expenses WHERE category = 'test'")
+            await c.commit()
             print("Database initialized successfully with write access")
     except Exception as e:
         print(f"Database initialization error: {e}")
         raise
 
-# Initialize database at module level
-asyncio.run(init_db())
+async def ensure_db():
+    # Changed: lazy, idempotent, async-safe initialization.
+    # Runs the first time any tool is actually invoked (inside the server's
+    # own event loop), instead of at module import time.
+    global _db_initialized
+    if _db_initialized:
+        return
+    async with _db_init_lock:
+        if not _db_initialized:
+            await init_db()
+            _db_initialized = True
 
 @mcp.tool()
-async def add_expense(date, amount, category, subcategory="", note=""):  # Changed: added async
+async def add_expense(date, amount, category, subcategory="", note=""):
     '''Add a new expense entry to the database.'''
     try:
-        async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
-            cur = await c.execute(  # Changed: added await
+        await ensure_db()
+        async with aiosqlite.connect(DB_PATH) as c:
+            cur = await c.execute(
                 "INSERT INTO expenses(date, amount, category, subcategory, note) VALUES (?,?,?,?,?)",
                 (date, amount, category, subcategory, note)
             )
             expense_id = cur.lastrowid
-            await c.commit()  # Changed: added await
+            await c.commit()
             return {"status": "success", "id": expense_id, "message": "Expense added successfully"}
-    except Exception as e:  # Changed: simplified exception handling
+    except Exception as e:
         if "readonly" in str(e).lower():
             return {"status": "error", "message": "Database is in read-only mode. Check file permissions."}
         return {"status": "error", "message": f"Database error: {str(e)}"}
-    
+
 @mcp.tool()
-async def list_expenses(start_date, end_date):  # Changed: added async
+async def list_expenses(start_date, end_date):
     '''List expense entries within an inclusive date range.'''
     try:
-        async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
-            cur = await c.execute(  # Changed: added await
+        await ensure_db()
+        async with aiosqlite.connect(DB_PATH) as c:
+            cur = await c.execute(
                 """
                 SELECT id, date, amount, category, subcategory, note
                 FROM expenses
@@ -72,15 +89,16 @@ async def list_expenses(start_date, end_date):  # Changed: added async
                 (start_date, end_date)
             )
             cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, r)) for r in await cur.fetchall()]  # Changed: added await
+            return [dict(zip(cols, r)) for r in await cur.fetchall()]
     except Exception as e:
         return {"status": "error", "message": f"Error listing expenses: {str(e)}"}
 
 @mcp.tool()
-async def summarize(start_date, end_date, category=None):  # Changed: added async
+async def summarize(start_date, end_date, category=None):
     '''Summarize expenses by category within an inclusive date range.'''
     try:
-        async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
+        await ensure_db()
+        async with aiosqlite.connect(DB_PATH) as c:
             query = """
                 SELECT category, SUM(amount) AS total_amount, COUNT(*) as count
                 FROM expenses
@@ -94,16 +112,15 @@ async def summarize(start_date, end_date, category=None):  # Changed: added asyn
 
             query += " GROUP BY category ORDER BY total_amount DESC"
 
-            cur = await c.execute(query, params)  # Changed: added await
+            cur = await c.execute(query, params)
             cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, r)) for r in await cur.fetchall()]  # Changed: added await
+            return [dict(zip(cols, r)) for r in await cur.fetchall()]
     except Exception as e:
         return {"status": "error", "message": f"Error summarizing expenses: {str(e)}"}
 
-@mcp.resource("expense:///categories", mime_type="application/json")  # Changed: expense:// → expense:///
+@mcp.resource("expense:///categories", mime_type="application/json")
 def categories():
     try:
-        # Provide default categories if file doesn't exist
         default_categories = {
             "categories": [
                 "Food & Dining",
@@ -118,7 +135,7 @@ def categories():
                 "Other"
             ]
         }
-        
+
         try:
             with open(CATEGORIES_PATH, "r", encoding="utf-8") as f:
                 return f.read()
